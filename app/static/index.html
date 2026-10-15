@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ProxyPulse — Proxy Scraper, Checker & Gateway</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="header">
+      <div class="brand">
+        <div class="logo-icon">⚡</div>
+        <div class="brand-text">
+          <h1>ProxyPulse</h1>
+          <p>Scraper · Multi-Protocol Checker · Rotating Gateway</p>
+        </div>
+      </div>
+      <div class="header-actions">
+        <div class="pulse-badge" id="live-indicator">
+          <div class="pulse-dot"></div>
+          <span id="live-text">Система активна</span>
+        </div>
+      </div>
+    </header>
+
+    <!-- Global Action Bar -->
+    <div class="action-bar">
+      <button class="btn btn-primary" id="btn-start-scrape" onclick="startScraper()">
+        <span>📥</span> Собрать прокси
+      </button>
+      <button class="btn btn-success" id="btn-check-all" onclick="startChecker(false)">
+        <span>⚡</span> Проверить все
+      </button>
+      <button class="btn btn-secondary" id="btn-check-new" onclick="startChecker(true)">
+        <span>🔍</span> Только непроверенные
+      </button>
+      <button class="btn btn-danger" id="btn-stop-all" onclick="stopAll()" disabled>
+        <span>⏹</span> Остановить
+      </button>
+      <button class="btn btn-secondary" onclick="purgeDeadProxies()" style="margin-left: auto;">
+        <span>🗑</span> Очистить мертвые
+      </button>
+    </div>
+
+    <!-- Active Task Progress Banner -->
+    <div class="progress-card" id="task-progress-card">
+      <div class="progress-header">
+        <span id="progress-task-name">Выполняется задача...</span>
+        <span id="progress-task-stats">0%</span>
+      </div>
+      <div class="progress-bar-bg">
+        <div class="progress-bar-fill" id="progress-bar-fill"></div>
+      </div>
+    </div>
+
+    <!-- Navigation Tabs -->
+    <nav class="tabs">
+      <button class="tab-btn active" data-tab="tab-dashboard" onclick="switchTab('tab-dashboard')">
+        <span>📊</span> Дашборд
+      </button>
+      <button class="tab-btn" data-tab="tab-proxies" onclick="switchTab('tab-proxies')">
+        <span>⚡</span> Пул прокси (<span id="tab-proxies-count">0</span>)
+      </button>
+      <button class="tab-btn" data-tab="tab-gateway" onclick="switchTab('tab-gateway')">
+        <span>🔄</span> Ротационный шлюз
+      </button>
+      <button class="tab-btn" data-tab="tab-sources" onclick="switchTab('tab-sources')">
+        <span>🌐</span> Источники (<span id="tab-sources-count">0</span>)
+      </button>
+      <button class="tab-btn" data-tab="tab-import-export" onclick="switchTab('tab-import-export')">
+        <span>📥</span> Импорт / Экспорт
+      </button>
+    </nav>
+
+    <!-- TAB 1: DASHBOARD -->
+    <section id="tab-dashboard" class="tab-content">
+      <!-- Metrics Cards -->
+      <div class="metrics-grid">
+        <div class="metric-card total">
+          <div class="metric-title">Всего в базе</div>
+          <div class="metric-value" id="stat-total">0</div>
+          <div class="metric-sub" id="stat-unchecked">Непроверено: 0</div>
+        </div>
+        <div class="metric-card alive">
+          <div class="metric-title">Живые прокси</div>
+          <div class="metric-value" style="color: var(--accent-emerald);" id="stat-alive">0</div>
+          <div class="metric-sub" id="stat-alive-pct">0% от проверенных</div>
+        </div>
+        <div class="metric-card dead">
+          <div class="metric-title">Недоступные (Dead)</div>
+          <div class="metric-value" style="color: var(--accent-rose);" id="stat-dead">0</div>
+          <div class="metric-sub">Ошибки соединения</div>
+        </div>
+        <div class="metric-card latency">
+          <div class="metric-title">Средний пинг</div>
+          <div class="metric-value" style="color: var(--accent-amber);" id="stat-latency">0 ms</div>
+          <div class="metric-sub">по живым узлам</div>
+        </div>
+        <div class="metric-card speed">
+          <div class="metric-title">Скорость проверки</div>
+          <div class="metric-value" style="color: var(--accent-purple);" id="stat-speed">0 /сек</div>
+          <div class="metric-sub">активных воркеров: 100</div>
+        </div>
+      </div>
+
+      <!-- Dashboard Visuals -->
+      <div class="dashboard-grid">
+        <!-- Protocols card -->
+        <div class="card">
+          <div class="card-title">
+            <span>Протоколы (Живые / Всего)</span>
+          </div>
+          <div id="protocols-list" style="display: flex; flex-direction: column; gap: 10px;">
+            <!-- Populated dynamically -->
+          </div>
+        </div>
+
+        <!-- Anonymity card -->
+        <div class="card">
+          <div class="card-title">
+            <span>Уровень анонимности</span>
+          </div>
+          <div id="anonymity-list" style="display: flex; flex-direction: column; gap: 10px;">
+            <!-- Populated dynamically -->
+          </div>
+        </div>
+
+        <!-- Top Countries -->
+        <div class="card">
+          <div class="card-title">
+            <span>Топ стран</span>
+          </div>
+          <div id="countries-list" style="display: flex; flex-direction: column; gap: 10px;">
+            <!-- Populated dynamically -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Live Event Terminal -->
+      <div class="card" style="margin-top: 20px;">
+        <div class="card-title">
+          <span>Консоль активности в реальном времени</span>
+          <button class="btn btn-secondary" style="padding: 4px 10px; font-size: 11px;" onclick="clearTerminal()">Очистить</button>
+        </div>
+        <div class="terminal" id="terminal-logs">
+          <div class="terminal-line"><span class="time">[System]</span> Подключение к серверу ProxyPulse...</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 2: PROXY POOL -->
+    <section id="tab-proxies" class="tab-content" style="display: none;">
+      <!-- Filter Bar -->
+      <div class="filter-bar">
+        <input type="text" id="filter-search" class="search-input" placeholder="Поиск по IP, порту или стране..." oninput="debounceReloadProxies()">
+        
+        <select id="filter-status" class="select-input" onchange="reloadProxies()">
+          <option value="">Все статусы</option>
+          <option value="1" selected>Только живые (Alive)</option>
+          <option value="0">Только мертвые (Dead)</option>
+          <option value="null">Непроверенные</option>
+        </select>
+
+        <select id="filter-protocol" class="select-input" onchange="reloadProxies()">
+          <option value="">Все протоколы</option>
+          <option value="http">HTTP</option>
+          <option value="https">HTTPS</option>
+          <option value="socks4">SOCKS4</option>
+          <option value="socks5">SOCKS5</option>
+        </select>
+
+        <select id="filter-anonymity" class="select-input" onchange="reloadProxies()">
+          <option value="">Любая анонимность</option>
+          <option value="elite">Elite (Высокая)</option>
+          <option value="anonymous">Anonymous</option>
+          <option value="transparent">Transparent</option>
+        </select>
+
+        <select id="filter-sort" class="select-input" onchange="reloadProxies()">
+          <option value="latency-asc">Пинг: по возрастанию</option>
+          <option value="id-desc">По новизне</option>
+          <option value="last_checked_at-desc">Недавно проверенные</option>
+        </select>
+
+        <button class="btn btn-secondary" onclick="reloadProxies()">
+          <span>🔄</span> Обновить
+        </button>
+      </div>
+
+      <!-- Data Table -->
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>Протокол</th>
+              <th>IP:Порт</th>
+              <th>Страна / Локация</th>
+              <th>Пинг</th>
+              <th>Анонимность</th>
+              <th>Статус</th>
+              <th>Проверен</th>
+              <th style="text-align: right;">Действия</th>
+            </tr>
+          </thead>
+          <tbody id="proxy-table-body">
+            <tr>
+              <td colspan="8" style="text-align: center; color: var(--text-muted); padding: 40px;">
+                Загрузка прокси...
+              </td>
+            </tr>
+          </tbody>
+        </table>
+
+        <!-- Pagination -->
+        <div class="pagination">
+          <div style="font-size: 13px; color: var(--text-muted);" id="pagination-info">
+            Показано 0 из 0
+          </div>
+          <div style="display: flex; gap: 8px;">
+            <button class="btn btn-secondary" id="page-prev-btn" onclick="changePage(-1)" disabled>Назад</button>
+            <span style="display: flex; align-items: center; padding: 0 10px; font-size: 13px; font-weight: 600;" id="page-current">1</span>
+            <button class="btn btn-secondary" id="page-next-btn" onclick="changePage(1)" disabled>Вперед</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TAB 3: ROTATING GATEWAY -->
+    <section id="tab-gateway" class="tab-content" style="display: none;">
+      <div class="gateway-banner">
+        <h2 style="font-size: 20px; font-weight: 700; margin-bottom: 8px; display: flex; align-items: center; gap: 10px;">
+          <span>🔄 Встроенный ротационный шлюз</span>
+          <span class="badge badge-online">Порт 8081</span>
+        </h2>
+        <p style="color: var(--text-muted); font-size: 14px; max-width: 800px; margin-bottom: 20px;">
+          Любой ваш скрипт, браузер или парсер может подключиться к <code>http://localhost:8081</code> как к обычному прокси. 
+          Шлюз автоматически перенаправит трафик через живые узлы из пула с авто-ротацией и мгновенным обходом сбоев.
+        </p>
+
+        <div style="display: flex; flex-wrap: wrap; gap: 16px; align-items: flex-end;">
+          <div>
+            <label style="display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">Стратегия выбора узла:</label>
+            <select id="gateway-strategy" class="select-input" onchange="updateGatewayConfig()">
+              <option value="fastest">Самый быстрый пинг (Fastest)</option>
+              <option value="random">Случайный живой прокси (Random)</option>
+              <option value="round-robin">По очереди (Round-Robin)</option>
+            </select>
+          </div>
+
+          <div>
+            <label style="display: block; font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">Фильтр страны (опционально):</label>
+            <input type="text" id="gateway-country" class="select-input" placeholder="Например: US, DE, FR" maxlength="2" style="width: 160px;" onchange="updateGatewayConfig()">
+          </div>
+
+          <button class="btn btn-primary" onclick="testGatewayConnection()">
+            <span>⚡</span> Протестировать шлюз прямо сейчас
+          </button>
+        </div>
+
+        <!-- Connection Test Result Box -->
+        <div id="gateway-test-result" style="display: none; margin-top: 16px; padding: 14px; border-radius: 8px; background: rgba(16, 185, 129, 0.1); border: 1px solid rgba(16, 185, 129, 0.3);">
+          <!-- Dynamic test result -->
+        </div>
+      </div>
+
+      <!-- Integration Code Snippets -->
+      <div class="card">
+        <div class="card-title">Примеры подключения в 1 клик</div>
+        
+        <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 8px;"><b>cURL:</b></p>
+        <div class="code-box">curl -x http://localhost:8081 https://api.ipify.org?format=json</div>
+
+        <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 8px; margin-top: 16px;"><b>Python (Requests / Httpx):</b></p>
+        <div class="code-box">import requests
+proxies = {"http": "http://localhost:8081", "https": "http://localhost:8081"}
+resp = requests.get("https://api.ipify.org?format=json", proxies=proxies, timeout=10)
+print(resp.json())</div>
+
+        <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 8px; margin-top: 16px;"><b>Node.js (Axios):</b></p>
+        <div class="code-box">import axios from 'axios';
+import { HttpsProxyAgent } from 'https-proxy-agent';
+
+const agent = new HttpsProxyAgent('http://localhost:8081');
+const { data } = await axios.get('https://api.ipify.org?format=json', { httpsAgent: agent });
+console.log(data);</div>
+      </div>
+    </section>
+
+    <!-- TAB 4: SOURCES -->
+    <section id="tab-sources" class="tab-content" style="display: none;">
+      <div class="card" style="margin-bottom: 24px;">
+        <div class="card-title">Добавить свой источник для сбора</div>
+        <div style="display: flex; flex-wrap: wrap; gap: 12px; align-items: center;">
+          <input type="text" id="new-source-name" class="search-input" placeholder="Название (например, Мой GitHub список)">
+          <input type="text" id="new-source-url" class="search-input" placeholder="Прямой URL (https://raw.githubusercontent.com/...)" style="flex: 2;">
+          <select id="new-source-proto" class="select-input">
+            <option value="all">Авто / Любой</option>
+            <option value="http">HTTP</option>
+            <option value="https">HTTPS</option>
+            <option value="socks4">SOCKS4</option>
+            <option value="socks5">SOCKS5</option>
+          </select>
+          <button class="btn btn-primary" onclick="addCustomSource()">Добавить</button>
+        </div>
+      </div>
+
+      <div class="table-container">
+        <table>
+          <thead>
+            <tr>
+              <th>Статус</th>
+              <th>Название</th>
+              <th>Протокол</th>
+              <th>URL адрес</th>
+              <th>Найдено</th>
+              <th>Последний сбор</th>
+              <th style="text-align: right;">Управление</th>
+            </tr>
+          </thead>
+          <tbody id="sources-table-body">
+            <!-- Populated dynamically -->
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- TAB 5: IMPORT / EXPORT -->
+    <section id="tab-import-export" class="tab-content" style="display: none;">
+      <div class="dashboard-grid">
+        <!-- Import card -->
+        <div class="card">
+          <div class="card-title">📥 Ручной импорт прокси</div>
+          <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 12px;">
+            Вставьте список в любом виде (<code>IP:PORT</code>, <code>protocol://IP:PORT</code>, с текстом или без). Система автоматически распознает валидные узлы.
+          </p>
+          <textarea id="import-textarea" class="search-input" rows="10" style="width: 100%; font-family: monospace; font-size: 12px; resize: vertical;" placeholder="192.168.1.1:8080&#10;socks5://10.0.0.1:1080&#10;45.76.12.34:3128"></textarea>
+          
+          <div style="display: flex; gap: 12px; margin-top: 12px; align-items: center;">
+            <select id="import-default-proto" class="select-input">
+              <option value="http">Протокол по умолчанию: HTTP</option>
+              <option value="https">HTTPS</option>
+              <option value="socks4">SOCKS4</option>
+              <option value="socks5">SOCKS5</option>
+            </select>
+            <button class="btn btn-primary" onclick="importProxies()">Загрузить в базу</button>
+          </div>
+          <div id="import-result" style="margin-top: 10px; font-size: 13px;"></div>
+        </div>
+
+        <!-- Export card -->
+        <div class="card">
+          <div class="card-title">📤 Экспорт прокси</div>
+          <p style="font-size: 13px; color: var(--text-muted); margin-bottom: 16px;">
+            Выгрузка пула с настраиваемыми фильтрами в нужном формате:
+          </p>
+
+          <div style="display: flex; flex-direction: column; gap: 12px;">
+            <div style="display: flex; gap: 12px;">
+              <select id="export-format" class="select-input" style="flex: 1;" onchange="updateExportUrl()">
+                <option value="txt">Текстовый (IP:PORT)</option>
+                <option value="json">JSON формат</option>
+                <option value="csv">CSV таблица</option>
+                <option value="proxychains">ProxyChains (conf)</option>
+                <option value="pac">PAC файл</option>
+              </select>
+
+              <select id="export-proto" class="select-input" style="flex: 1;" onchange="updateExportUrl()">
+                <option value="">Любой протокол</option>
+                <option value="http">Только HTTP</option>
+                <option value="https">Только HTTPS</option>
+                <option value="socks4">Только SOCKS4</option>
+                <option value="socks5">Только SOCKS5</option>
+              </select>
+            </div>
+
+            <div style="display: flex; gap: 12px;">
+              <select id="export-alive" class="select-input" style="flex: 1;" onchange="updateExportUrl()">
+                <option value="1">Только живые (Alive)</option>
+                <option value="">Все прокси</option>
+              </select>
+
+              <label style="display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-muted);">
+                <input type="checkbox" id="export-with-proto" onchange="updateExportUrl()"> Включать протокол (proto://)
+              </label>
+            </div>
+
+            <button class="btn btn-success" style="width: 100%; margin-top: 8px;" onclick="downloadExport()">
+              <span>💾</span> Скачать файл
+            </button>
+
+            <div style="margin-top: 16px; border-top: 1px solid var(--border-color); padding-top: 16px;">
+              <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">Прямая ссылка на API для других приложений и ботов:</div>
+              <div class="code-box" id="export-api-url" style="cursor: pointer;" onclick="copyExportApiUrl()" title="Нажмите, чтобы скопировать">
+                http://localhost:8080/api/export?format=txt&alive=1
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <script src="/js/app.js"></script>
+</body>
+</html>
